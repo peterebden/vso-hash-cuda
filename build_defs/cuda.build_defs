@@ -1,0 +1,55 @@
+"""Build rules for CUDA libraries."""
+
+def cuda_library(name:str, srcs:list, deps:list=None, visibility:list=None, _tag:str=None):
+    """Compiles .cu files to a library.
+
+    Args:
+      name: Name of the rule
+      srcs: Input .cu files
+      deps: Any dependencies
+      visibility: Visibility of the target
+    """
+    return build_rule(
+        name = name,
+        tag = _tag,
+        srcs = srcs,
+        outs = [name + ".a"],
+        tools = [CONFIG.NVCC_TOOL],
+        cmd = f'$TOOL --lib {CONFIG.NVCC_FLAGS} -o $OUT $SRCS',
+        deps = deps,
+        visibility = visibility,
+    )
+
+
+def cuda_binary(name:str, out:str=None, srcs:list=None, deps:list=None, visibility:list=None):
+    """Links a series of object files together into a binary.
+
+    Args:
+      name: Name of the rule
+      out: Output binary name. Defaults to the same as `name`.
+      srcs: Input .cu files (if any)
+      deps: Any dependencies
+      visibility: Visibility of the target
+    """
+    if srcs:
+        srcs = [cuda_library(
+            name = name,
+            _tag = 'lib',
+            srcs = srcs,
+            deps = deps,
+            visibility = visibility,
+        )]
+    return build_rule(
+        name = name,
+        srcs = srcs,
+        outs = [out or name],
+        deps = deps,
+        cmd = '$TOOL --link -o $OUT `find . -name "*.o" -or -name "*.a" | sort`',
+        binary = True,
+        tools = [CONFIG.NVCC_TOOL],
+        visibility = visibility,
+    )
+
+
+CONFIG.setdefault('NVCC_TOOL', 'nvcc')
+CONFIG.setdefault('NVCC_FLAGS', '')
