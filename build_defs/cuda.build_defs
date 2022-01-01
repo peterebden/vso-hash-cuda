@@ -1,22 +1,54 @@
 """Build rules for CUDA libraries."""
 
-def cuda_library(name:str, srcs:list, deps:list=None, visibility:list=None, _tag:str=None):
+def cuda_library(name:str, srcs:list, hdrs:list=None, deps:list=None, visibility:list=None, _tag:str=None):
     """Compiles .cu files to a library.
 
     Args:
       name: Name of the rule
       srcs: Input .cu files
+      hdrs: Input .cuh files (if any)
       deps: Any dependencies
       visibility: Visibility of the target
     """
-    return build_rule(
+    if not hdrs:
+        return build_rule(
+            name = name,
+            tag = _tag,
+            srcs = srcs,
+            outs = [name + ".a"],
+            tools = [CONFIG.NVCC_TOOL],
+            cmd = f'$TOOL --lib {CONFIG.NVCC_FLAGS} -o $OUT $SRCS',
+            requires = ['cuh'],
+            deps = deps,
+            visibility = visibility,
+        )
+    hdr_rule = filegroup(
         name = name,
-        tag = _tag,
-        srcs = srcs,
+        tag = 'hdrs',
+        srcs = hdrs,
+        visibility = visibility,
+    )
+    lib_rule = build_rule(
+        name = name,
+        tag = 'lib',
+        srcs = {
+            'hdrs': hdrs,
+            'srcs': srcs,
+        },
         outs = [name + ".a"],
         tools = [CONFIG.NVCC_TOOL],
-        cmd = f'$TOOL --lib {CONFIG.NVCC_FLAGS} -o $OUT $SRCS',
+        cmd = f'$TOOL --lib {CONFIG.NVCC_FLAGS} -o $OUT $SRCS_SRCS',
+        requires = ['cuh'],
         deps = deps,
+        visibility = visibility,
+    )
+    return filegroup(
+        name = name,
+        srcs = [lib_rule],
+        provides = {
+            'cu': lib_rule,
+            'cuh': hdr_rule,
+        },
         visibility = visibility,
     )
 
@@ -45,6 +77,7 @@ def cuda_binary(name:str, out:str=None, srcs:list=None, deps:list=None, visibili
         outs = [out or name],
         deps = deps,
         cmd = '$TOOL --link -o $OUT `find . -name "*.o" -or -name "*.a" | sort`',
+        requires = ['cu'],
         binary = True,
         tools = [CONFIG.NVCC_TOOL],
         visibility = visibility,
@@ -52,4 +85,4 @@ def cuda_binary(name:str, out:str=None, srcs:list=None, deps:list=None, visibili
 
 
 CONFIG.setdefault('NVCC_TOOL', 'nvcc')
-CONFIG.setdefault('NVCC_FLAGS', '')
+CONFIG.setdefault('NVCC_FLAGS', '-I. --default-stream=per-thread')
